@@ -1,0 +1,300 @@
+----------------------------------------------------
+do show ip ospf neighbor
+do sh ip pro
+do sh r | begin int
+-------------------------------------------
+HQ Network:
+Vlan 10 - HR [DGW-192.168.1.1]
+Vlan 20 - Design [DGW - 192.168.2.1]
+Vlan 30 - Delivery [DGW - 192.168.3.1]
+Vlan 50 - Management [DGW - 192.168.50.1]
+Vlan 99 - Blackhole 
+Vlan 100 - Native
+
+vlan 10
+name HR
+vlan 20
+name Delivery
+vlan 30
+name Design
+vlan 50
+name Management
+vlan 99
+name Blackhole
+vlan 100
+name Native
+
+
+//Trunk port
+int g0/1
+sw mode trunk
+sw trunk native vlan 100
+sw nonegotiate
+sw trunk allowed vlan 10,20,30,50,100
+
+//BLACKHOLE
+int ra fa0/1, fa0/6-24, g0/2 
+sw mode access
+sw access vlan 99
+shut
+
+//Access port
+int ra fa0/1, fa0/6-24, g0/2 
+sw mode access
+sw access vlan 10
+
+
+Intervlan conf:
+int g0/0/0.10
+en do 10
+ip add 192.168.1.1 255.255.255.0
+int g0/0/0.100
+en do 100 native
+//to up the physical link
+int g0/0/0
+no shut 
+
+//Move Sys Log mesg to new line
+line con 0
+logging synchronous
+
+//Configure OSPF
+R1(config)#router ospf 10 
+R1(config-router)#do sh ip ro co // to display connected network
+ C   172.16.1.0/24  is directly connected, GigabitEthernet0/0
+ C   172.16.3.0/30  is directly connected, Serial0/0/0
+ C   192.168.10.4/30  is directly connected, Serial0/0/1
+R1(config-router)#network 172.16.1.0 0.0.0.255 area 0 
+R1(config-router)#network 192.168.10.4 0.0.0.3 area 0 
+R1(config-router)#network 172.16.3.0 0.0.0.3 area 0 
+R1(config-router)#passive-int g0/0 
+
+//Conf interface 
+int se0/0/0
+ip add 200.100.100.1 255.255.255.252
+no shut
+
+
+//Conf DHCP - at KT network
+R2(config)#ip dhcp excluded-address 192.168.10.1 192.168.10.10
+R2(config)#ip dhcp pool R3-LAN
+R2(dhcp-config)#network 192.168.10.0 255.255.255.0
+R2(dhcp-config)#default-router 192.168.10.1
+R2(dhcp-config)#dns-server 198.51.100.10
+R2(dhcp-config)#ex
+
+
+//Conf Port Security
+S1#en
+S1#conf t
+Enter configuration commands, one per line.  End with CNTL/Z.
+S1(config)#int ra fa0/1-2 // Access port not at the trunk port!
+S1(config-if-range)#switchport port-security 
+S1(config-if-range)#switchport port-security maximum 1
+S1(config-if-range)#switchport port-security violation restrict
+S1(config-if-range)#switchport port-security mac-address sticky
+
+SW-1(config)#int fa0/2
+SW-1(config-if)#switchport mode acc
+SW-1(config-if)#switchport access vlan 10
+
+//Trunk port
+int ra g0/1-2
+sw mode trunk
+sw trunk native vlan 100
+sw nonegotiate
+
+SW-2(config)#int ra fa0/3-9, fa0/11-23
+SW-2(config-if-range)#switchport mode access 
+SW-2(config-if-range)#switchport access vlan 999
+% Access VLAN does not exist. Creating vlan 999
+SW-2(config-if-range)#shut
+SW-2(config)#vlan 999
+SW-2(config-vlan)#name BlackHole
+SW-2(config-vlan)#ex
+
+//DHCP Conf.
+R2(config)#ip dhcp excluded-address 192.168.30.1 192.168.30.10 //static assignment
+R2(dhcp-config)#ip dhcp pool R3-LAN
+R2(dhcp-config)#network 192.168.30.0 255.255.255.0
+R2(dhcp-config)#default-router 192.168.30.1
+R2(dhcp-config)#dns-server 192.168.20.254
+
+
+//Port Security - MUST BE CONFIGURED AT THE ACCESS PORT
+S1(config)#int ra fa0/1-2
+S1(config-if-range)#switchport port-security //active the port security
+S1(config-if-range)#switchport port-security maximum 
+S1(config-if-range)#switchport port-security mac-address sticky @ MANUAL ASSIGNMENT 
+S1(config-if-range)#switchport port-security violation restrict/protect/shutdown
+NOTE: MAKE SURE TO PING FIRST THE END DEVICES FOR THE SWITCH TO LEARN THE MAC ADD! - IF U CHOOSE MAC ADD STICKY!
+
+SW-1(config)#int ra g0/1-2
+SW-1(config-if-range)#switchport mode trunk 
+SW-1(config-if-range)#switchport trunk native vlan 100
+SW-1(config-if-range)#switchport nonegotiate
+
+
+HSRP -  Active Router
+-------------------------
+R1(config)#int g0/1
+R1(config-if)#standby ver 2
+R1(config-if)#standby 1 ip 192.168.1.254
+R1(config-if)#standby 1 priority 150
+R1(config-if)#standby 1 preempt
+
+HSRP -  Standby Router
+-------------------------
+R3(config)#int g0/0
+R3(config-if)#standby ver 2
+R3(config-if)#standby 1 ip 192.168.1.254
+
+Steps :
+1. Configure Router - Active and Standby
+2. Change all the DGW in ALL OF THE END DEVICES!!- using the Virtual IP add
+
+
+Active Router subinterfaces - change IP add: - ASSIGNMENT WITH MULTIPLE VLANS.
+VURTUAL IP ADD : 192.168.1.1, 192.168.2.1, 192.168.3.1, 192.168.50.1
+--------------------------------------------
+KL_ROUTER-[Active]#sh ip int br
+Interface              IP-Address      OK? Method Status                Protocol 
+GigabitEthernet0/0/0   unassigned      YES NVRAM  up                    up 
+GigabitEthernet0/0/0.10192.168.1.254   YES manual up                    up 
+GigabitEthernet0/0/0.20192.168.2.254   YES manual up                    up 
+GigabitEthernet0/0/0.30192.168.3.254   YES manual up                    up 
+GigabitEthernet0/0/0.50192.168.50.254  YES manual up                    up
+
+Standby Router subinterfaces - change IP add:
+------------------------------------------------
+KL_ROUTER[Standby]#
+KL_ROUTER[Standby]#sh ip int br
+Interface              IP-Address      OK? Method Status                Protocol 
+GigabitEthernet0/0/0   unassigned      YES NVRAM  up                    up 
+GigabitEthernet0/0/0.10192.168.1.253   YES manual up                    up 
+GigabitEthernet0/0/0.20192.168.2.253   YES manual up                    up 
+GigabitEthernet0/0/0.30192.168.3.253   YES manual up                    up 
+GigabitEthernet0/0/0.50192.168.50.253  YES manual up                    up 
+GigabitEthernet0/0/0.100unassigned      YES unset  up                   up
+
+
+HSRP -  Active Router - Assignment with multiple VLANs
+-------------------------
+R1(config)#int g0/0/0.10
+R1(config-if)#standby 1 ip 192.168.1.1
+R1(config-if)#standby 1 priority 150
+R1(config-if)#standby 1 preempt
+R1(config)#int g0/0/0.20
+R1(config-if)#standby 1 ip 192.168.1.1
+R1(config-if)#standby 1 priority 150
+R1(config-if)#standby 1 preempt
+R1(config)#int g0/0/0.30
+R1(config-if)#standby 1 ip 192.168.2.1
+R1(config-if)#standby 1 priority 150
+R1(config-if)#standby 1 preempt
+R1(config)#int g0/0/0.50
+R1(config-if)#standby 1 ip 192.168.50.1
+R1(config-if)#standby 1 priority 150
+R1(config-if)#standby 1 preempt
+
+
+HSRP -  Standby Router - Assignment with multiple VLANs
+-------------------------
+R3(config)#int g0/0/0.10
+R3(config-if)#standby 1 ip 192.168.1.1
+R3(config)#int g0/0/0.20
+R3(config-if)#standby 1 ip 192.168.2.1
+R3(config)#int g0/0/0.30
+R3(config-if)#standby 1 ip 192.168.3.1
+R3(config)#int g0/0/0.50
+R3(config-if)#standby 1 ip 192.168.50.1
+
+----------------- OR
+HSRP -  Active Router - Assignment with multiple VLANs
+-------------------------
+R1(config)#int g0/0/0.10
+R1(config-if)#standby 1 ip 192.168.1.1
+R1(config-if)#standby 1 priority 150
+R1(config-if)#standby 1 preempt
+R1(config)#int g0/0/0.20
+R1(config-if)#standby 2 ip 192.168.1.1
+R1(config-if)#standby 2 priority 150
+R1(config-if)#standby 2 preempt
+R1(config)#int g0/0/0.30
+R1(config-if)#standby 3 ip 192.168.2.1
+R1(config-if)#standby 3 priority 150
+R1(config-if)#standby 3 preempt
+R1(config)#int g0/0/0.50
+R1(config-if)#standby 5 ip 192.168.50.1
+R1(config-if)#standby 5 priority 150
+R1(config-if)#standby 5 preempt
+
+
+HSRP -  Standby Router - Assignment with multiple VLANs
+-------------------------
+R3(config)#int g0/0/0.10
+R3(config-if)#standby 1 ip 192.168.1.1
+R3(config)#int g0/0/0.20
+R3(config-if)#standby 2 ip 192.168.2.1
+R3(config)#int g0/0/0.30
+R3(config-if)#standby 3 ip 192.168.3.1
+R3(config)#int g0/0/0.50
+R3(config-if)#standby 5 ip 192.168.50.1
+
+--------------------------DOUBLE CHECK ON THESE TOO ONCE U HV CONFIGURED THE HSRP!
+
+PLEASE ALSO UPDATE THE FOLLOWING:
+1. OSPF CONF.- IMPORTANT
+2. ADDITIONAL WAN - WAN 5
+3. TRUNK PORT AT THE DIS_SW IN HQ NETWORK
+
+
+SSH Conf:
+---------
+SERFARM_ROUTER(config)#ip domain-name serverfarm.com
+SERFARM_ROUTER(config)#username admin secret ssh
+SERFARM_ROUTER(config)#ip ssh ver 2
+SERFARM_ROUTER(config)#crypto key generate rsa
+The name for the keys will be: SERFARM_ROUTER.serverfarm.com
+Choose the size of the key modulus in the range of 360 to 2048 for your
+  General Purpose Keys. Choosing a key modulus greater than 512 may take
+  a few minutes.
+
+How many bits in the modulus [512]: 1024
+% Generating 1024 bit RSA keys, keys will be non-exportable...[OK]
+
+SERFARM_ROUTER(config)#line vty 0 15
+SERFARM_ROUTER(config-line)#transport input ssh
+SERFARM_ROUTER(config-line)#access-group 102 in
+SERFARM_ROUTER(config-line)#login local
+SERFARM_ROUTER(config-line)#exit
+SERFARM_ROUTER(config)#do wr
+
+SERFARM_ROUTER(config)#line vty 0 15 //allow telnet
+SERFARM_ROUTER(config-line)#password telnet
+SERFARM_ROUTER(config-line)#login local
+SERFARM_ROUTER(config-line)#exit
+SERFARM_ROUTER(config)#do wr
+
+Test SSH from End Devices:
+C:\>ssh -l admin 198.51.100.1
+Password: ssh
+
+EtherChannel
+------------
+Basic Conf:
+S2(config)#int ra fa0/23-24, g0/1-2
+S2(config-if-range)#switchport mode trunk
+S2(config-if-range)#switchport none
+
+Conf. EtherChannel:
+-------------------
+S1(config)# interface range g0/1 - 2
+S1(config-if-range)# shutdown
+S1(config-if-range)# channel-group 2 mode active
+S1(config-if-range)# no shutdown
+
+logical int:
+S1(config-if-range)# int po2
+S1(config-if)# switchport mode trunk
+
