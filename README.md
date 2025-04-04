@@ -44,7 +44,7 @@ wlan SECURE_WLAN 1 WPA2-ENTERPRISE
   radius-server host 192.168.50.10
 
 
-📄 Technical Documentation
+##📄 Technical Documentation
 
 Full project report available in:
 
@@ -60,7 +60,8 @@ Layer 2 attack simulations
 
 Defense configuration snippets
 
-🌉 Network Topologies
+##🌉 Network Topologies
+
 Logical Topology
 HQ Network
 Figure 1: Kuala Lumpur HQ Architecture
@@ -73,7 +74,7 @@ AP1 ---- WLC (192.168.100.254) ---- Core Switch
 AP2       |
 AP3    Admin PC (192.168.100.2)
 AP4
-🛡️ Attack Mitigations
+##🛡️ Attack Mitigations
 MAC Flooding Defense
 cisco
 Copy
