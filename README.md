@@ -44,7 +44,7 @@ wlan SECURE_WLAN 1 WPA2-ENTERPRISE
   radius-server host 192.168.50.10
 
 
-##📄 Technical Documentation
+###📄 Technical Documentation
 
 Full project report available in:
 
